@@ -38,9 +38,11 @@ export default function Paywall() {
       <ImageBackground
         source={{ uri: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=940" }}
         style={StyleSheet.absoluteFill} resizeMode="cover"
+        pointerEvents="none"
       />
       <LinearGradient colors={["rgba(10,10,10,0.4)", "rgba(10,10,10,0.85)", "rgba(10,10,10,0.98)"]}
-        locations={[0, 0.35, 0.7]} style={StyleSheet.absoluteFill} />
+        locations={[0, 0.35, 0.7]} style={StyleSheet.absoluteFill}
+        pointerEvents="none" />
       <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.header}>

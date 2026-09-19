@@ -64,6 +64,7 @@ export default function HotspotDetail() {
                 <LinearGradient
                   colors={["rgba(10,10,10,0.4)", "transparent", "rgba(10,10,10,0.95)"]}
                   locations={[0, 0.4, 1]} style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
                 />
               </ImageBackground>
             )}

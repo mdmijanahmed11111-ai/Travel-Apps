@@ -1,0 +1,49 @@
+{
+  "summary": "Full end-to-end retest of the 'I can't sign' bug fix. Backend + Frontend both pass at 100%. Backend: 11/11 pytest tests in test_auth_flow.py (health, register, duplicate-reject, login premium/bad-pw, /auth/me with & without token, non-premium 402 gate, month-tier activate, is_premium flip, gated endpoint now 200). Frontend Playwright (mobile viewport 390x844): (1) Welcome loads with both testID buttons visible and TAPPABLE (previous pointer-events overlay bug is fully fixed), (2) 'Create account' navigates to /signup, (3) signup form submits, POST /api/auth/register returns 200 and AuthGate auto-redirects the new non-premium user to /paywall (no longer stuck on /signup), (4) selecting 'month' tier and tapping 'Unlock GuardTrip' calls POST /api/subscriptions/activate and redirects to /discover (URL confirmed /discover), (5) logout → welcome → 'I already have an account' → login with existing premium user brtest3@example.com lands on /discover with Discover tab, Trip Wallet, hotspot cards and bottom tab bar all rendered correctly. AuthGate routing (no-user → welcome, non-premium → paywall, premium → tabs) confirmed working. Only console noise is the two RN Web deprecation warnings the main agent already flagged (`props.pointerEvents` and `shadow*`) — non-blocking.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "welcome.tsx / paywall.tsx / hotspot/[id].tsx",
+        "issue": "`props.pointerEvents` is deprecated on react-native-web; move to `style={{ pointerEvents: 'none' }}` on the ImageBackground and LinearGradient overlays. Currently spawns a console.warn on every mount. Reference: /app/frontend/app/(auth)/welcome.tsx:18,24; /app/frontend/app/paywall.tsx:41,45."
+      },
+      {
+        "component": "Multiple screens",
+        "issue": "`shadow*` style props are deprecated on react-native-web; migrate to `boxShadow`. Console warning fires on welcome/paywall/discover. Non-blocking but should be addressed before RN 0.76+."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_flow.py",
+    "/app/test_reports/pytest/auth_flow_results.xml"
+  ],
+  "action_items": [
+    "(Optional, non-blocking) Migrate `pointerEvents=\"none\"` props on ImageBackground/LinearGradient overlays to `style={{ pointerEvents: 'none' }}` in welcome.tsx, paywall.tsx, hotspot/[id].tsx to silence the react-native-web deprecation warning.",
+    "(Optional, non-blocking) Migrate `shadow*` style keys to CSS `boxShadow` for react-native-web compatibility going forward.",
+    "(Nice-to-have) Add `testID=\"discover-screen\"` to the root View of app/(app)/discover.tsx so E2E tests can assert the destination screen by testID rather than URL."
+  ],
+  "critical_code_review_comments": [
+    "AuthGate in app/_layout.tsx now correctly handles the missing branch — a signed-in non-premium user in the (auth) segment is redirected to /paywall (line 31-32). Verified live: brand-new signup lands on paywall in under 2s.",
+    "server.py has grown to 1251 lines; splitting into routers/{auth,subs,hotspots,chat,wallet,alerts}.py + services/wiki_images.py is overdue (also flagged in iteration_3).",
+    "user_to_out drops `_id` correctly; no ObjectId leaks observed in any API response tested.",
+    "JWT_SECRET, MONGO_URL, EMERGENT_LLM_KEY are all read via `os.environ[...]` without defaults — good, fails fast on misconfig.",
+    "Frontend uses `process.env.EXPO_PUBLIC_BACKEND_URL` correctly via src/api.ts (implicit — all network calls in E2E hit /api on the same origin)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_flow.py",
+    "/app/test_reports/pytest/auth_flow_results.xml",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (5/5 flows)"},
+  "seed_data_creation": "test_auth_flow.py creates one throwaway user per run (TEST_flow_<uuid>@guardtrip.example.com/test1234) which gets activated to month-tier. Playwright creates one e2e_<uuid>@guardtrip.example.com user which also gets activated. Both are safe to leave; they're clearly namespaced.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run backend suite: `python -m pytest backend/tests/test_auth_flow.py -v` from /app. All 11 tests pass in <2s. For frontend, use mobile viewport 390x844 and start from a cleared localStorage — the AuthGate redirect chain is triggered by segments changing, so `page.reload()` after `localStorage.clear()` is required to reset. testIDs verified live: welcome-signup-button, welcome-login-button, signup-{name,email,password,submit}-input, paywall-tier-{week,month,year}, paywall-activate-button, paywall-logout, login-{email,password,submit}-input. Missing testID: discover-screen (add to app/(app)/discover.tsx root View). Existing premium user for quick login smoke: brtest3@example.com / test1234.",
+  "rca_of_issue": "Original bug (user report 'I can't sign'): On react-native-web, absolute-fill ImageBackground + LinearGradient overlays on welcome/paywall/hotspot screens intercepted pointer events, making the Create account/Sign In Pressables underneath un-tappable even though they were visually rendered. Main-agent fix: added `pointerEvents=\"none\"` to those overlays. Verified live this iteration — both welcome buttons and paywall tier chips + activate button are fully tappable. Secondary bug: AuthGate had no branch to move a freshly-signed-up (authenticated, non-premium) user out of the (auth) segment, leaving them stuck on /signup. Main-agent fix: added `else if (user && !user.is_premium && inAuth) router.replace('/paywall')` (line 31-32 of _layout.tsx). Verified live: fresh signup lands on /paywall within 2s of the register call resolving. Both fixes production-ready."
+}

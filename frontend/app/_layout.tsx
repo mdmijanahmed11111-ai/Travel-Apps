@@ -28,6 +28,8 @@ function AuthGate() {
       router.replace("/(auth)/welcome");
     } else if (user && !user.is_premium && inTabs) {
       router.replace("/paywall");
+    } else if (user && !user.is_premium && inAuth) {
+      router.replace("/paywall");
     } else if (user && user.is_premium && (inAuth || inPaywall)) {
       router.replace("/(app)/discover");
     } else if (!user && !inAuth && segments.length > 0) {

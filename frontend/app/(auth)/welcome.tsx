@@ -15,11 +15,13 @@ export default function Welcome() {
         source={{ uri: "https://images.pexels.com/photos/31650443/pexels-photo-31650443.jpeg?auto=compress&cs=tinysrgb&w=940" }}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
+        pointerEvents="none"
       />
       <LinearGradient
         colors={["transparent", "rgba(10,10,10,0.6)", "rgba(10,10,10,0.98)"]}
         locations={[0, 0.4, 0.9]}
         style={StyleSheet.absoluteFill}
+        pointerEvents="none"
       />
       <View style={[styles.content, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }]}>
         <View style={styles.brandWrap}>

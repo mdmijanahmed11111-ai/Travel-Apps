@@ -1,0 +1,50 @@
+{
+  "summary": "Photo-gallery duplicate/broken-image bug fix verified end-to-end. Backend: 5/5 pytest tests pass in new test_hotspot_photos_canonical.py — confirms GET /api/hotspots/{id} for Hazrat Shah Jalal Dargah / Sylhet City / Ratargul Swamp Forest returns unique canonical URLs (no thumb.wikimedia.org, no ?utm_* query strings, no duplicates, all on wikimedia.org), and each photo loads over HTTP 200 with a real image payload. Shah Jalal specifically now has exactly 5 unique photos (was 6 with 1 dup) — matches the fix note. Auth-flow regression 11/11 pass. Frontend: on the actual /hotspot/{id} screen (mobile viewport 390x844) all three hotspot detail galleries render 100% of their photos with img.naturalWidth > 0 — Shah Jalal 5/5, Sylhet City 6/6, Ratargul 6/6. The gallery counter '1 / N photos' and page-dot indicators reflect correct counts. Sign-in with brtest3@example.com/test1234 works and lands on premium content. Non-blocking RN Web warnings (props.pointerEvents, shadow*) still present (already known from iteration_4).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "hotspot/[id].tsx and other screens",
+        "issue": "`props.pointerEvents` is deprecated on react-native-web — should be moved to style.pointerEvents. Fires on every mount. Reference: /app/frontend/app/hotspot/[id].tsx (ImageBackground overlay) and /app/frontend/app/(auth)/welcome.tsx / paywall.tsx. Non-blocking."
+      },
+      {
+        "component": "Multiple screens",
+        "issue": "`shadow*` style props deprecated on react-native-web — migrate to CSS `boxShadow`. Non-blocking. Already flagged in iteration_4."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_hotspot_photos_canonical.py",
+    "/app/test_reports/pytest/hotspot_photos_results.xml",
+    "/app/backend/tests/test_auth_flow.py"
+  ],
+  "action_items": [
+    "None blocking. (Optional) Migrate pointerEvents & shadow* props to react-native-web-compliant equivalents (carried over from iteration_4).",
+    "(Nice-to-have) Consider seeding city as 'Sylhet' rather than 'Bishwanath Upazila' in hotspots collection — current label is technically a sub-district and confused the review-request test target."
+  ],
+  "critical_code_review_comments": [
+    "_canon() in server.py:548-554 correctly strips query params and rewrites thumb.wikimedia.org -> upload.wikimedia.org before dedup, exactly matching the reported RCA.",
+    "dedup set in server.py:560-569 compares canonical URLs, so `?utm_campaign=api` vs `?utm_campaign=imageinfo` variants of the same file collapse. Verified live on Shah Jalal (6 -> 5).",
+    "Existing 17 hotspots+Shah-Jalal DB migration was applied successfully — every URL sampled across 3 hotspots is on upload.wikimedia.org with no query string.",
+    "server.py still at 1268 lines — splitting into routers/services modules is still overdue (carried over from iteration_3/4).",
+    "Frontend hotspot/[id].tsx correctly falls back to [image_url] when photos array is empty (line 43) — good defensive handling.",
+    "Wikimedia rate-limits (429) hit the pytest loader for a single URL on the 1st pass; browsers don't hit this because they use a proper UA and connection reuse. Test now retries 4x with polite UA and passes cleanly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_hotspot_photos_canonical.py",
+    "/app/test_reports/pytest/hotspot_photos_results.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {"backend": "100% (5/5 new + 11/11 auth regression)", "frontend": "100% (17/17 gallery photos across 3 hotspots loaded)"},
+  "seed_data_creation": "None. Used existing seeded Sylhet-area hotspots (city='Bishwanath Upazila') and existing brtest3@example.com premium user. Test suite is idempotent — only reads.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The photo-gallery fix is verified. To rerun: `python -m pytest backend/tests/test_hotspot_photos_canonical.py -v -n0` from /app. Note the seeded Sylhet hotspots live under city='Bishwanath Upazila' (not 'Sylhet') — GET /api/hotspots?city=Bishwanath%20Upazila returns 6 hotspots: Shah Jalal Dargah, Sylhet City, Ratargul Swamp Forest, Srimangal Tea Gardens, Jaflong, Bichanakandi. For frontend gallery testing, set localStorage.gt_token to a fresh premium JWT before navigating to /hotspot/{id}; then inspect nested <img> elements inside `[data-testid=\"hotspot-gallery-img\"]` and check naturalWidth > 0. Wikimedia rate-limits bulk backend requests (429) — use polite UA and retries.",
+  "rca_of_issue": "User reported (Bangla): 'It shows 6 photos but only 1 image actually loads, the others are missing'. Root cause was two-fold: (1) The `photos` array in the hotspots collection contained duplicate entries whose raw URLs differed only in tracking query params (e.g. ...?utm_campaign=api vs ...?utm_campaign=imageinfo) — the dedup step compared raw URL strings, so these duplicates survived and browser image cache treated them as separate requests. (2) Some photos pointed at the less-reliable `thumb.wikimedia.org` mirror instead of the canonical `upload.wikimedia.org` CDN, which intermittently 404s from Cloudflare-fronted RN apps. Fix (server.py:548-569): added `_canon()` that strips query params and rewrites `thumb.wikimedia.org` -> `upload.wikimedia.org`, then dedups the `photos` array by canonical URL. Fix is applied for both new discoveries AND was replayed as a one-time migration over the existing 18 hotspot documents. Verification: (a) Backend API — every photo URL returned across 17 photos in 3 hotspots is on `upload.wikimedia.org`, no query string, zero duplicates. Shah Jalal shrank 6->5 as expected. (b) Frontend gallery — img.naturalWidth > 0 on all 17 photos across the 3 target hotspots. Bug is fully resolved."
+}

@@ -542,12 +542,29 @@ async def _fetch_place_images(place: str, city: str, idx: int, wiki_title: Optio
         primary = FALLBACK_IMAGES[idx % len(FALLBACK_IMAGES)]
         photos = [primary]
 
-    # Cap at 6 unique photos
+    # Normalize + de-dup: strip tracking query params and use canonical CDN host,
+    # otherwise two URLs pointing to the same file (e.g. ?utm_campaign=api vs
+    # ?utm_campaign=imageinfo) are treated as different and show as duplicates.
+    def _canon(u: str) -> str:
+        if not u:
+            return u
+        u = u.split("?", 1)[0]
+        # thumb.wikimedia.org is a less-reliable mirror; canonical CDN is upload.wikimedia.org
+        u = u.replace("://thumb.wikimedia.org/", "://upload.wikimedia.org/")
+        return u
+
+    if primary:
+        primary = _canon(primary)
+
+    # Cap at 6 unique photos (compare by canonical URL)
     seen = set()
     uniq: list = []
     for p in photos:
-        if p not in seen:
-            seen.add(p); uniq.append(p)
+        c = _canon(p)
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        uniq.append(c)
         if len(uniq) >= 6:
             break
     return {"primary": primary, "photos": uniq}

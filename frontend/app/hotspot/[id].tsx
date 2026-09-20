@@ -45,10 +45,21 @@ export default function HotspotDetail() {
     const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
     if (i !== pageIdx) setPageIdx(i);
   };
+  const goTo = (i: number) => {
+    const clamped = Math.max(0, Math.min(photos.length - 1, i));
+    galleryRef.current?.scrollToIndex({ index: clamped, animated: true });
+    setPageIdx(clamped);
+  };
+  const goPrev = () => goTo(pageIdx - 1);
+  const goNext = () => goTo(pageIdx + 1);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+        showsVerticalScrollIndicator={false}
+        directionalLockEnabled
+      >
         <View style={{ height: HERO_H }}>
           <FlatList
             ref={galleryRef}
@@ -58,6 +69,7 @@ export default function HotspotDetail() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={onScrollEnd}
+            getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
             renderItem={({ item }) => (
               <ImageBackground source={{ uri: item }} style={{ width: SCREEN_W, height: HERO_H }}
                 testID="hotspot-gallery-img">
@@ -69,6 +81,12 @@ export default function HotspotDetail() {
               </ImageBackground>
             )}
           />
+          {photos.length > 1 ? (
+            <View style={styles.tapZones} pointerEvents="box-none">
+              <Pressable onPress={goPrev} style={styles.tapZoneLeft} testID="hotspot-gallery-prev" />
+              <Pressable onPress={goNext} style={styles.tapZoneRight} testID="hotspot-gallery-next" />
+            </View>
+          ) : null}
           <View style={[styles.heroBar, { paddingTop: insets.top + spacing.md, position: "absolute", left: 0, right: 0 }]} pointerEvents="box-none">
             <Pressable onPress={() => router.back()} style={styles.backBtn} testID="hotspot-back">
               <Text style={styles.backText}>←</Text>
@@ -78,9 +96,15 @@ export default function HotspotDetail() {
             </View>
           </View>
           {photos.length > 1 ? (
-            <View style={styles.dots} pointerEvents="none">
+            <View style={styles.dots} pointerEvents="box-none">
               {photos.map((_, i) => (
-                <View key={i} style={[styles.dot, i === pageIdx && styles.dotActive]} />
+                <Pressable
+                  key={i}
+                  onPress={() => goTo(i)}
+                  hitSlop={10}
+                  testID={`hotspot-gallery-dot-${i}`}
+                  style={[styles.dot, i === pageIdx && styles.dotActive]}
+                />
               ))}
             </View>
           ) : null}
@@ -151,7 +175,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary },
   ratingText: { color: colors.brandPrimary, fontWeight: "700" },
   heroBottom: { padding: spacing.xl, position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 2 },
-  dots: { position: "absolute", top: 60, alignSelf: "center", flexDirection: "row", gap: 6, zIndex: 2 },
+  tapZones: { position: "absolute", top: 80, bottom: 120, left: 0, right: 0, flexDirection: "row" },
+  tapZoneLeft: { flex: 1 },
+  tapZoneRight: { flex: 1 },
+  dots: { position: "absolute", top: 60, alignSelf: "center", flexDirection: "row", gap: 6, zIndex: 3 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.35)" },
   dotActive: { backgroundColor: colors.brandPrimary, width: 18 },
   photoCount: { color: colors.brandPrimary, fontSize: 11, letterSpacing: 1.5, marginTop: 6, fontWeight: "600" },

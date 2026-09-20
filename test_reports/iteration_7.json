@@ -1,0 +1,33 @@
+{
+  "summary": "Backend + frontend regression for the new Offline Survival Pack (moved to Safety) and 12-language i18n. Backend: 5/5 pytest passed — GET /api/offline/pack works for seeded Paris (returns city/hotspots/alerts/phrases/packed_at), returns 402 for non-premium, and for unseeded 'Sylhet, Bangladesh' Claude fallback via _generate_ai_phrases produces 12 phrases containing Bengali script (verified U+0980–U+09FF codepoints). PATCH /api/user/language {language:'বাংলা'} returns 200, persists, and is reflected in GET /api/auth/me; empty language rejected with 400. Frontend: after UI login as brtest3@example.com, Safety tab renders the Offline Survival Pack card at the TOP with testID safety-pack-card, no Paris/Tokyo/Bali/Barcelona hardcoded chip row exists, current city label shows the persisted current_city ('◉ Paris' from prior check-in — GPS auto-detect only fires when city is empty; the relocate ⟳ btn triggers reverse-geocode manually), safety-download-pack triggers POST /api/offline/pack, caches to AsyncStorage under gt_offline_paris, then swaps label to 'Refresh pack' and reveals safety-view-phrases which opens a phrase modal with tap-to-copy rows. Profile: 'Offline Survival Packs' section is REMOVED (not found in DOM), 'App language' section present with testID profile-language-selector opening a bottom sheet listing 12 languages (lang-option-en, -bn, …). Selecting lang-option-bn immediately re-renders Profile in Bengali ('সাইন আউট', 'সদস্যপদ', 'অ্যাপের ভাষা' all present), gt_lang persisted as '\"bn\"' in localStorage, and Safety strings also flip to Bengali ('লাইভ অ্যালার্ট', 'প্যাক রিফ্রেশ'). No red screen or blocking RN errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web deprecation (non-blocking, pre-existing)", "issue": "Console warnings: 'shadow*' style props are deprecated (use boxShadow) and 'props.pointerEvents is deprecated (use style.pointerEvents)'. Consistent with iteration_6 notes; not affecting this feature. Consider migrating to style.pointerEvents / boxShadow in a future pass."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_offline_and_language.py",
+    "/app/test_reports/pytest/offline_lang.xml",
+    "/app/test_reports/iteration_7.json"
+  ],
+  "action_items": [
+    "Optional UX: on Safety mount, if user.current_city is stale (e.g. from a prior trip), consider always calling detectLocation() so tourists arriving in a NEW city (e.g. Sylhet) get their pack tied to the fresh GPS instead of the last-checked-in city. Current code skips auto-detect when city is prefilled (safety.tsx line ~117). Users can still hit the ⟳ relocate button, so this is a nice-to-have rather than a blocker.",
+    "Non-blocking: migrate deprecated 'shadow*' + 'props.pointerEvents' to their modern web equivalents to silence console warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1067 _generate_ai_phrases works and results are cached in db.phrase_packs by lowercase city — solid. Consider also caching under (city, country) tuple to avoid collisions between e.g. Paris,France and Paris,Texas.",
+    "safety.tsx:117 auto-detect gated on !city means a returning traveler's cached user.current_city short-circuits GPS on this screen. Might be intentional; documented as an action item.",
+    "safety.tsx:33 packKey normalises spaces → underscores; matches AsyncStorage key 'gt_offline_<city>' expectation from the review request (verified: gt_offline_paris produced)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (5/5 tests)", "frontend": "100% (all requested behaviors verified: pack card, no demo chips, download→cache→view phrases, profile OSP removed, language picker, bn switch, gt_lang persistence, Safety re-render)"},
+  "seed_data_creation": "None. Reused existing premium user brtest3@example.com and seeded Paris pack. AI phrase pack for Sylhet was generated on demand and is now cached in db.phrase_packs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login via UI (tap 'I already have an account'); do NOT rely on directly setting localStorage.gt_token — the app's zustand auth store doesn't hydrate that key on first paint, so navigating to /safety with only gt_token set will bounce back to the paywall. To exercise Bengali AI phrase generation from the frontend, either (a) call api.checkin with lat/lng in Sylhet to overwrite user.current_city first, or (b) tap safety-relocate-btn after setting Playwright geolocation to (24.87, 91.87). Backend GET /api/offline/pack?city=Sylhet&country=Bangladesh returns Bengali phrases in ~5–10s (verified). Screenshots at /tmp/safety.png (EN) and /tmp/safety_bn.png (BN).",
+  "rca_of_issue": "N/A — no bugs. All requested acceptance criteria pass. Only nuance: Safety screen uses user.current_city as the initial city and auto-detects GPS only when that is empty. For tourists arriving in a new location this means they must tap ⟳ to refresh — flagged as a UX improvement, not a defect."
+}

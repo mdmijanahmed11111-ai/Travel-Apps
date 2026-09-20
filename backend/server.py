@@ -1035,38 +1035,105 @@ async def create_alert(body: AlertCreate, user: dict = Depends(require_premium))
 # ============================================================================
 
 @api_router.get("/offline/pack")
-async def offline_pack(city: str, user: dict = Depends(require_premium)):
+async def offline_pack(city: str, country: Optional[str] = "", user: dict = Depends(require_premium)):
     hotspots = await db.hotspots.find({"city": {"$regex": f"^{city}$", "$options": "i"}}, {"_id": 0}).to_list(50)
     alerts = await db.alerts.find({"city": {"$regex": f"^{city}$", "$options": "i"}}, {"_id": 0}).to_list(50)
-    phrases = PHRASE_PACKS.get(city.lower(), PHRASE_PACKS["default"])
-    return {"city": city, "hotspots": hotspots, "alerts": alerts, "phrases": phrases,
+    phrases = PHRASE_PACKS.get(city.lower())
+    if not phrases:
+        # Try cached AI phrases
+        cached = await db.phrase_packs.find_one({"city_key": city.lower()}, {"_id": 0})
+        if cached:
+            phrases = cached.get("phrases") or []
+        else:
+            try:
+                phrases = await _generate_ai_phrases(city, country or "")
+                if phrases:
+                    await db.phrase_packs.insert_one({
+                        "id": str(uuid.uuid4()),
+                        "city_key": city.lower(),
+                        "city": city,
+                        "country": country or "",
+                        "phrases": phrases,
+                        "created_at": now_iso(),
+                    })
+            except Exception:
+                phrases = PHRASE_PACKS["default"]
+    return {"city": city, "country": country or "",
+            "hotspots": hotspots, "alerts": alerts,
+            "phrases": phrases or PHRASE_PACKS["default"],
             "packed_at": now_iso()}
+
+
+async def _generate_ai_phrases(city: str, country: str) -> list:
+    """Ask Claude for 12 survival phrases in the primary local language of the given city."""
+    system = (
+        "You are a travel-phrase generator. Return ONLY a valid JSON array (no prose, no markdown fences). "
+        "Each element must be: {\"en\": \"...\", \"local\": \"...\", \"pronunciation\": \"...\"}. "
+        "Use the primary local language natives use daily in that city (native script for 'local', simple English "
+        "pronunciation for 'pronunciation'). Never invent phrases."
+    )
+    user_prompt = (
+        f"City: {city}{', ' + country if country else ''}. Generate 12 essential survival phrases a solo tourist needs: "
+        "greetings, help, police, emergency, prices, directions, food allergies, thank you, sorry, water, bathroom, hospital. "
+        "Return the JSON array of {en, local, pronunciation}. No other text."
+    )
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"phrases-{city.lower()}",
+        system_message=system,
+    ).with_model("anthropic", "claude-sonnet-4-6")
+    reply = await chat.send_message(UserMessage(text=user_prompt))
+    text = reply if isinstance(reply, str) else str(reply)
+    return _extract_json_array(text)
+
+
+@api_router.patch("/user/language")
+async def set_user_language(payload: dict, user: dict = Depends(get_current_user)):
+    lang = str(payload.get("language") or "").strip()
+    if not lang:
+        raise HTTPException(400, "language required")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"language": lang}})
+    user["language"] = lang
+    return {"success": True, "language": lang}
 
 
 PHRASE_PACKS = {
     "paris": [
-        {"en": "Hello", "local": "Bonjour"}, {"en": "Thank you", "local": "Merci"},
-        {"en": "Help!", "local": "Au secours!"}, {"en": "Where is the police station?", "local": "Où est le commissariat?"},
-        {"en": "How much?", "local": "Combien ça coûte?"}, {"en": "I don't understand", "local": "Je ne comprends pas"},
+        {"en": "Hello", "local": "Bonjour", "pronunciation": "bon-ZHOOR"},
+        {"en": "Thank you", "local": "Merci", "pronunciation": "mehr-SEE"},
+        {"en": "Help!", "local": "Au secours!", "pronunciation": "oh sik-OOR"},
+        {"en": "Where is the police station?", "local": "Où est le commissariat?", "pronunciation": "OO ay luh koh-mee-sar-YAH"},
+        {"en": "How much?", "local": "Combien ça coûte?", "pronunciation": "kom-BYAN sah COOT"},
+        {"en": "I don't understand", "local": "Je ne comprends pas", "pronunciation": "zhuh nuh kom-PRAHN pah"},
     ],
     "tokyo": [
-        {"en": "Hello", "local": "Konnichiwa"}, {"en": "Thank you", "local": "Arigatou gozaimasu"},
-        {"en": "Help!", "local": "Tasukete!"}, {"en": "Where is the police?", "local": "Keisatsu wa doko desu ka?"},
-        {"en": "How much?", "local": "Ikura desu ka?"}, {"en": "Excuse me", "local": "Sumimasen"},
+        {"en": "Hello", "local": "こんにちは", "pronunciation": "Konnichiwa"},
+        {"en": "Thank you", "local": "ありがとうございます", "pronunciation": "Arigatou gozaimasu"},
+        {"en": "Help!", "local": "助けて!", "pronunciation": "Tasukete!"},
+        {"en": "Where is the police?", "local": "警察はどこですか?", "pronunciation": "Keisatsu wa doko desu ka"},
+        {"en": "How much?", "local": "いくらですか?", "pronunciation": "Ikura desu ka"},
+        {"en": "Excuse me", "local": "すみません", "pronunciation": "Sumimasen"},
     ],
     "bali": [
-        {"en": "Hello", "local": "Halo / Om Swastiastu"}, {"en": "Thank you", "local": "Terima kasih"},
-        {"en": "Help!", "local": "Tolong!"}, {"en": "Police", "local": "Polisi"},
-        {"en": "How much?", "local": "Berapa harganya?"}, {"en": "Sorry", "local": "Maaf"},
+        {"en": "Hello", "local": "Halo / Om Swastiastu", "pronunciation": "HAH-loh"},
+        {"en": "Thank you", "local": "Terima kasih", "pronunciation": "teh-REE-mah KAH-see"},
+        {"en": "Help!", "local": "Tolong!", "pronunciation": "TOH-long"},
+        {"en": "Police", "local": "Polisi", "pronunciation": "poh-LEE-see"},
+        {"en": "How much?", "local": "Berapa harganya?", "pronunciation": "beh-RAH-pah har-GAH-nyah"},
+        {"en": "Sorry", "local": "Maaf", "pronunciation": "MAH-af"},
     ],
     "barcelona": [
-        {"en": "Hello", "local": "Hola"}, {"en": "Thank you", "local": "Gracias"},
-        {"en": "Help!", "local": "¡Ayuda!"}, {"en": "Where is the police?", "local": "¿Dónde está la policía?"},
-        {"en": "How much?", "local": "¿Cuánto cuesta?"}, {"en": "I don't speak Spanish", "local": "No hablo español"},
+        {"en": "Hello", "local": "Hola", "pronunciation": "OH-lah"},
+        {"en": "Thank you", "local": "Gracias", "pronunciation": "GRAH-see-ahs"},
+        {"en": "Help!", "local": "¡Ayuda!", "pronunciation": "ah-YOO-dah"},
+        {"en": "Where is the police?", "local": "¿Dónde está la policía?", "pronunciation": "DON-day es-TAH lah po-lee-SEE-ah"},
+        {"en": "How much?", "local": "¿Cuánto cuesta?", "pronunciation": "KWAN-toh KWES-tah"},
+        {"en": "I don't speak Spanish", "local": "No hablo español", "pronunciation": "no AH-bloh es-pah-NYOL"},
     ],
     "default": [
-        {"en": "Hello", "local": "Hello"}, {"en": "Thank you", "local": "Thank you"},
-        {"en": "Help!", "local": "Help!"},
+        {"en": "Hello", "local": "Hello", "pronunciation": ""},
+        {"en": "Thank you", "local": "Thank you", "pronunciation": ""},
+        {"en": "Help!", "local": "Help!", "pronunciation": ""},
     ],
 }
 

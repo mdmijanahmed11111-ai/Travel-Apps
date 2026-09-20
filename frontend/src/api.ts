@@ -68,7 +68,13 @@ export const api = {
   },
   createAlert: (b: any) => request("/alerts", { method: "POST", body: JSON.stringify(b) }),
 
-  offlinePack: (city: string) => request(`/offline/pack?city=${encodeURIComponent(city)}`),
+  offlinePack: (city: string, country?: string) => {
+    const q = new URLSearchParams({ city });
+    if (country) q.set("country", country);
+    return request(`/offline/pack?${q.toString()}`);
+  },
+  setLanguage: (language: string) =>
+    request("/user/language", { method: "PATCH", body: JSON.stringify({ language }) }),
 
   walletToday: () => request("/wallet/today"),
   walletHistory: (days = 7) => request(`/wallet/history?days=${days}`),
